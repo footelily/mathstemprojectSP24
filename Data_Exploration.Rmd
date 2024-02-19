@@ -1,0 +1,107 @@
+---
+title: "Data Exploration"
+author: "Breanna Jones, Alex Johnson, Lily Foote"
+date: "2024-02-19"
+output: html_document
+---
+
+## Packages Used
+
+```{r, message = FALSE}
+library(tidyverse)
+```
+
+## Reading in Data
+
+```{r}
+olym <- read.csv(file = "dataset_olympics.csv")
+region <- read.csv(file = "noc_region.csv")
+```
+
+## Creating data "subsets"
+
+```{r medals}
+olym_medals <- olym %>%
+  filter(Medal == "Silver" | Medal == "Bronze" | Medal == "Gold")
+
+olym_21c <- olym %>%
+  filter(Year >= 2000)
+
+olym_region <- left_join(olym, region, by = join_by(NOC == noc_region))
+
+olym_reg_medals <- olym_region %>% 
+  filter(Medal == "Silver" | Medal == "Bronze" | Medal == "Gold")
+```
+
+## First look
+
+```{r glimpse}
+glimpse(olym)
+glimpse(olym_medals)
+
+head(olym_medals)
+```
+
+```{r}
+olym_NA <- olym %>%
+  filter(is.na(Age), is.na(Height), is.na(Weight))
+
+glimpse(olym_NA)
+```
+
+
+```{r}
+summaryStats <- summary(olym)
+summaryStats
+```
+
+```{r counting medals}
+olym_medals %>%
+  group_by(Team) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+olym_region %>%
+  filter(Medal == "Bronze" | Medal == "Silver" | Medal == "Gold") %>% 
+  group_by(reg) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+olym_region %>% 
+  filter(is.na(reg))
+```
+
+## Filtering by...
+
+### Filtering by Sport
+
+```{r bysport}
+olym_fence <- olym %>%
+  filter(Sport == "Fencing")
+summary(olym_fence)
+
+olym_medals %>% 
+  filter(Sport == "Tug-Of-War" & Year >= 2000) %>%
+  group_by(Team) %>% 
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+```
+
+## Grouping by...
+
+### Grouping by Age
+
+```{r}
+olym_reg_medals %>% 
+  group_by(Age) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+
+olym_reg_medals %>% 
+  filter(Medal == "Gold") %>%
+  filter(!is.na(Age)) %>% 
+  summarize(avg_age = mean(Age), median_age = median(Age), sd_age = sd(Age), max_age = max(Age), min_age = min(Age))
+```
+
+
