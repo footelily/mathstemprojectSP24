@@ -1,7 +1,7 @@
 ---
 title: "Data Exploration"
 author: "Breanna Jones, Alex Johnson, Lily Foote"
-date: "2024-02-19"
+date: "3/4/2024"
 output: html_document
 ---
 
@@ -9,6 +9,7 @@ output: html_document
 
 ```{r, message = FALSE}
 library(tidyverse)
+library(ggplot2)
 ```
 
 ## Reading in Data
@@ -31,6 +32,9 @@ olym_region <- left_join(olym, region, by = join_by(NOC == noc_region))
 
 olym_reg_medals <- olym_region %>% 
   filter(Medal == "Silver" | Medal == "Bronze" | Medal == "Gold")
+
+olym_medals_NA <- olym_medals %>%
+  filter(!is.na(Age), !is.na(Height), !is.na(Weight))
 ```
 
 ## First look
@@ -44,7 +48,7 @@ head(olym_medals)
 
 ```{r}
 olym_NA <- olym %>%
-  filter(is.na(Age), is.na(Height), is.na(Weight))
+  filter(!is.na(Age), !is.na(Height), !is.na(Weight))
 
 glimpse(olym_NA)
 ```
@@ -53,6 +57,8 @@ glimpse(olym_NA)
 ```{r}
 summaryStats <- summary(olym)
 summaryStats
+
+summary(olym_medals)
 ```
 
 ```{r counting medals}
@@ -72,6 +78,16 @@ olym_region %>%
 ```
 
 ## Filtering by...
+
+### Filtering by Top 5
+
+```{r}
+olym_top5 <- olym_medals %>%
+  filter(Team == "United States" | Team == "Soviet Union" | Team == "Great Britain" | Team == "France" | Team == "Italy")
+
+olym_top5_reg <- olym_reg_medals %>%
+  filter(reg == "USA" | Team == "Russia" | Team == "Germany" | Team == "France" | Team == "Italy")
+```
 
 ### Filtering by Sport
 
@@ -95,8 +111,8 @@ olym_medals %>%
 ```{r}
 olym_reg_medals %>% 
   group_by(Age) %>% 
-  summarize(count = n()) %>% 
-  arrange(desc(count))
+  summarize(medals = n()) %>% 
+  arrange(desc(medals))
 
 olym_reg_medals %>% 
   filter(Medal == "Gold") %>%
@@ -104,4 +120,68 @@ olym_reg_medals %>%
   summarize(avg_age = mean(Age), median_age = median(Age), sd_age = sd(Age), max_age = max(Age), min_age = min(Age))
 ```
 
+
+## Plots
+
+```{r, Breanna1}
+ggplot(olym_medals, aes(y = Age, color = Medal)) +
+  geom_boxplot()
+ggplot(olym_medals, aes(x = Season, fill = Medal)) +
+  geom_bar()
+```
+
+**Boxplot: 25 is the median age across all medals. Outlier ages start around 37. All right skewed.**
+**Barplot: Significantly more medals won in summer than winter.**
+
+```{r, Breanna2}
+ggplot(olym_top5, aes(x = Team, fill = Medal)) +
+  geom_bar()
+ggplot(olym_top5, aes(y = Age, color = Team)) +
+  geom_boxplot()
+ggplot(olym_top5, aes(x = Team, fill = Sport)) +
+  geom_bar()
+```
+
+**Barplot: Shows that the U.S. has the most medals in all three categories.** 
+**Boxplot:SU has the smallest range of ages participating in the olympics, with all being younger than 50. Great Britain has the oldest person to win a medal.**
+
+```{r}
+ggplot(olym_top5_reg, aes(x = reg, fill = Medal)) +
+  geom_bar()
+ggplot(olym_top5_reg, aes(y = Age, color = reg)) +
+  geom_boxplot()
+```
+
+
+```{r}
+ggplot(data = olym_reg_medals, aes(x = Age)) +
+  geom_bar()
+ggplot(data = olym_medals_NA, aes(x = Height, y = Weight, color = Age)) +
+  geom_point()
+```
+
+```{r Lily1}
+olym_swim <- olym_reg_medals %>%
+  filter(Sport == "Swimming")
+
+olym_swim_top5 <- olym_swim %>% 
+  group_by(reg) %>%
+  summarize(medals = n()) %>%
+  arrange(desc(medals)) %>% 
+  head(n = 5)
+
+ggplot(olym_swim_top5, aes(x = reorder(reg, -medals), y = medals)) +
+  geom_col(fill = "deepskyblue") +
+  labs(title = "Top 5 Regions in Olympic Swimming", x = "region", y = "medals won")
+
+olym_swim %>% 
+  group_by(reg) %>% 
+  mutate(medals = n()) %>% 
+  filter(medals >= 15) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = Age, y = reorder(reg, +medals))) +
+  geom_boxplot(color = "darkblue") +
+  labs(title = "Distribution of Ages of Olympic Swimmer Medalists", subtitle = "by top 10 regions", x = "age", y = "region")
+
+```
 
