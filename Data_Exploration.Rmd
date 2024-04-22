@@ -7,96 +7,136 @@ output: html_document
 
 ## Packages Used
 
-```{r, message = FALSE}
+```{r packages, message = FALSE}
 library(tidyverse)
 library(ggplot2)
+library(corrplot)
 ```
 
 ## Reading in Data
 
-```{r}
+```{r reading}
 olym <- read.csv(file = "dataset_olympics.csv")
 region <- read.csv(file = "noc_region.csv")
 ```
 
 ## Creating data "subsets"
 
-```{r medals}
-olym_medals <- olym %>%
-  filter(Medal == "Silver" | Medal == "Bronze" | Medal == "Gold")
+```{r subsets1}
+olym$NOC <- gsub("SGP", "SIN", olym$NOC)
 
-olym_21c <- olym %>%
-  filter(Year >= 2000)
-
-olym_region <- left_join(olym, region, by = join_by(NOC == noc_region))
-
-olym_reg_medals <- olym_region %>% 
-  filter(Medal == "Silver" | Medal == "Bronze" | Medal == "Gold")
-
-olym_medals_NA <- olym_medals %>%
-  filter(!is.na(Age), !is.na(Height), !is.na(Weight))
+olym_sport <- olym %>% 
+  rename(Discipline = Sport) %>% 
+  mutate(Sport = case_when(
+    Discipline == "Swimming" | 
+      Discipline == "Diving" |
+      Discipline == "Water Polo" |
+      Discipline == "Synchronized Swimming" ~ "Aquatics",
+    Discipline == "Volleyball" |
+      Discipline == "Beach Volleyball" ~ "Volleyball",
+    Discipline == "Gymnastics" |
+      Discipline == "Rhythmic Gymnastics" ~ "Gymnastics",
+    Discipline == "Bobsleigh" |
+      Discipline == "Skeleton" ~ "Bobsleigh",
+    Discipline == "Speed Skating" |
+      Discipline == "Short Track Speed Skating" |
+      Discipline == "Figure Skating" ~ "Skating",
+    Discipline == "Alpine Skiing" |
+      Discipline == "Cross Country Skiing" |
+      Discipline == "Ski Jumping" |
+      Discipline == "Nordic Combined" |
+      Discipline == "Freestyle Skiing" |
+      Discipline == "Snowboarding" ~ "Skiing")) %>% 
+  filter(Sport == "Skiing" | Sport == "Skating" | Sport == "Bobsleigh" | Sport == "Gymnastics" | Sport == "Volleyball" | Sport == "Aquatics") %>%
+  filter(Year >= 1980) %>% 
+  na.omit() %>% 
+  mutate(is_medalist = ifelse((Medal == "Bronze" | Medal == "Silver" | Medal == "Gold"), "medalist", "non-medalist"))
 ```
+
+```{r subsets2}
+olym_reg <- left_join(olym_sport, region, by = join_by(NOC == noc_region))
+olym_reg <- na.omit(olym_reg)
+
+olym_reg_medals <- olym_reg %>% 
+  filter(is_medalist == "medalist")
+
+```
+
+## Cleaning the data
+
+```{r clean-data}
+olym_clean <- olym_reg %>%
+  rename(Region = reg) %>% #for continuity 
+  select(ID, Name, Sex, Age, Height, Weight, Region, NOC, Year, Season, City, Sport, Discipline, Event, is_medalist, Medal) #reordering cols
+```
+
 
 ## First look
 
 ```{r glimpse}
-glimpse(olym)
-glimpse(olym_medals)
+glimpse(olym_reg)
+glimpse(olym_reg_medals)
 
-head(olym_medals)
+olym_sport %>% 
+  group_by(Sport) %>% 
+  summarize(count = n(), avg_age = mean(Age), med_age = median(Age), sd_age = sd(Age), IQR_age = IQR(Age), max_age = max(Age), min_age = min(Age))
+
+olym_sport %>% 
+  group_by(Sport) %>% 
+  summarize(count = n(), avg_ht = mean(Height), med_ht = median(Height), sd_ht = sd(Height), IQR_ht = IQR(Height), max_ht = max(Height), min_ht = min(Height))
+
+olym_sport %>% 
+  group_by(Sport) %>% 
+  summarize(count = n(), avg_wt = mean(Weight), med_wt = median(Weight), sd_wt = sd(Weight), IQR_wt = IQR(Weight), max_wt = max(Weight), min_wt = min(Weight))
+
+head(olym_reg_medals)
 ```
 
-```{r}
-olym_NA <- olym %>%
-  filter(!is.na(Age), !is.na(Height), !is.na(Weight))
 
-glimpse(olym_NA)
-```
-
-
-```{r}
-summaryStats <- summary(olym)
+```{r summaryStats}
+summaryStats <- summary(olym_sport)
 summaryStats
 
-summary(olym_medals)
+summary(olym_reg_medals)
 ```
 
 ```{r counting medals}
-olym_medals %>%
+olym_reg_medals %>%
   group_by(Team) %>%
   summarize(count = n()) %>%
   arrange(desc(count))
 
-olym_region %>%
+olym_reg %>%
   filter(Medal == "Bronze" | Medal == "Silver" | Medal == "Gold") %>% 
   group_by(reg) %>%
   summarize(count = n()) %>%
   arrange(desc(count))
 
-olym_region %>% 
+olym_reg %>% 
   filter(is.na(reg))
+
 ```
 
 ## Filtering by...
 
 ### Filtering by Top 5
 
-```{r}
-olym_top5 <- olym_medals %>%
-  filter(Team == "United States" | Team == "Soviet Union" | Team == "Great Britain" | Team == "France" | Team == "Italy")
+```{r top5}
+olym_top5 <- olym_reg_medals %>%
+  filter(Team == "United States" | Team == "Italy" | Team == "Russia" | Team == "Australia" | Team == "Canada")
 
 olym_top5_reg <- olym_reg_medals %>%
-  filter(reg == "USA" | Team == "Russia" | Team == "Germany" | Team == "France" | Team == "Italy")
+  filter(reg == "USA" | Team == "Russia" | Team == "Italy" | Team == "Germany" | Team == "Canada")
 ```
 
 ### Filtering by Sport
 
-```{r bysport}
+```{r bySport}
 olym_fence <- olym %>%
   filter(Sport == "Fencing")
 summary(olym_fence)
 
-olym_medals %>% 
+olym %>% 
   filter(Sport == "Tug-Of-War" & Year >= 2000) %>%
   group_by(Team) %>% 
   summarize(count = n()) %>%
@@ -108,7 +148,7 @@ olym_medals %>%
 
 ### Grouping by Age
 
-```{r}
+```{r byAge}
 olym_reg_medals %>% 
   group_by(Age) %>% 
   summarize(medals = n()) %>% 
@@ -120,49 +160,86 @@ olym_reg_medals %>%
   summarize(avg_age = mean(Age), median_age = median(Age), sd_age = sd(Age), max_age = max(Age), min_age = min(Age))
 ```
 
+### Grouping by Medal Type
+
+```{r byMedal}
+#Counting number of each medal
+olym_reg_medals %>% 
+  group_by(Medal) %>%
+  summarize(count = n())
+
+#Calculating age stats by medal
+olym_reg_medals %>% 
+  group_by(Medal) %>% 
+  filter(!is.na(Age)) %>% 
+  summarize(avgAge = mean(Age), median(Age), sd(Age), min(Age), max(Age))
+
+#Calculating weight stats by medal
+olym_reg_medals %>% 
+  group_by(Medal) %>%
+  filter(!is.na(Height)) %>% 
+  summarize(avgHt = mean(Height), median(Height), sd(Height), min(Height), max(Height))
+
+#Calculation height stats by medal
+olym_reg_medals %>%
+  group_by(Medal) %>%
+  filter(!is.na(Weight)) %>% 
+  summarize(avgWt = mean(Weight), median(Weight), sd(Weight), min(Weight), max(Weight))
+
+```
+
+- number of bronze, silver, and gold medals awarded are **similar**, but not the same
+
+- average age of bronze, silver, and gold medalists is about equal, at 24 years old
 
 ## Plots
 
-```{r, Breanna1}
-ggplot(olym_medals, aes(y = Age, color = Medal)) +
+```{r plots1}
+ggplot(olym_reg_medals, aes(y = Age, color = Medal)) +
   geom_boxplot()
-ggplot(olym_medals, aes(x = Season, fill = Medal)) +
+ggplot(olym_reg_medals, aes(x = Season, fill = Medal)) +
   geom_bar()
 ```
 
 **Boxplot: 25 is the median age across all medals. Outlier ages start around 37. All right skewed.**
 **Barplot: Significantly more medals won in summer than winter.**
 
-```{r, Breanna2}
-ggplot(olym_top5, aes(x = Team, fill = Medal)) +
+```{r plots2}
+ggplot(olym_top5_reg, aes(x = reg, fill = Medal)) +
   geom_bar()
-ggplot(olym_top5, aes(y = Age, color = Team)) +
+ggplot(olym_top5_reg, aes(y = Age, color = reg)) +
   geom_boxplot()
-ggplot(olym_top5, aes(x = Team, fill = Sport)) +
-  geom_bar()
+
+ggplot(olym_top5_reg, aes(x = reg, fill = Sport)) +
+  geom_bar(position = "fill") +
+  labs(y = "proportion", x = "region")
 ```
 
 **Barplot: Shows that the U.S. has the most medals in all three categories.** 
 **Boxplot:SU has the smallest range of ages participating in the olympics, with all being younger than 50. Great Britain has the oldest person to win a medal.**
 
-```{r}
+```{r plots3}
 ggplot(olym_top5_reg, aes(x = reg, fill = Medal)) +
-  geom_bar()
+  geom_bar(position = "fill")
+
 ggplot(olym_top5_reg, aes(y = Age, color = reg)) +
   geom_boxplot()
 ```
 
 
-```{r}
-ggplot(data = olym_reg_medals, aes(x = Age)) +
-  geom_bar()
-ggplot(data = olym_medals_NA, aes(x = Height, y = Weight, color = Age)) +
-  geom_point()
+```{r plots4}
+ggplot(data = olym_reg, aes(x = Age)) +
+  geom_histogram(binwidth = 1) +
+  facet_wrap(vars(is_medalist))
+
+ggplot(data = olym_reg, aes(x = Height, y = Weight, color = Age)) +
+  geom_jitter(alpha = 0.75) +
+  facet_wrap(vars(is_medalist))
 ```
 
-```{r Lily1}
+```{r plots5}
 olym_swim <- olym_reg_medals %>%
-  filter(Sport == "Swimming")
+  filter(Sport == "Aquatics")
 
 olym_swim_top5 <- olym_swim %>% 
   group_by(reg) %>%
@@ -172,7 +249,7 @@ olym_swim_top5 <- olym_swim %>%
 
 ggplot(olym_swim_top5, aes(x = reorder(reg, -medals), y = medals)) +
   geom_col(fill = "deepskyblue") +
-  labs(title = "Top 5 Regions in Olympic Swimming", x = "region", y = "medals won")
+  labs(title = "Top 5 Regions in Olympic Aquatics", x = "region", y = "medals won")
 
 olym_swim %>% 
   group_by(reg) %>% 
@@ -181,7 +258,20 @@ olym_swim %>%
   ungroup() %>% 
   ggplot(aes(x = Age, y = reorder(reg, +medals))) +
   geom_boxplot(color = "darkblue") +
-  labs(title = "Distribution of Ages of Olympic Swimmer Medalists", subtitle = "by top 10 regions", x = "age", y = "region")
+  labs(title = "Distribution of Ages of Olympic Aquatic Medalists", subtitle = "by top 10 regions", x = "age", y = "region")
 
 ```
+
+```{r correlation matrix}
+numeric_olym_reg <- select_if(olym_reg, is.numeric)
+
+correlation_matrix <- cor(numeric_olym_reg)
+
+correlation_matrix
+
+corrplot(correlation_matrix, method = "color")
+
+heatmap(correlation_matrix)
+```
+
 

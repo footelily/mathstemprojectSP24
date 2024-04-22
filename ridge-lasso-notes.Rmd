@@ -1,0 +1,99 @@
+---
+title: "Lasso and Ridge Notes"
+author: "Lily Foote"
+date: "2024-04-17"
+output: html_document
+---
+
+```{r libraries}
+library(tidyverse)
+```
+
+## Examples with Numerical Predictors
+
+### Ridge Regression Model
+
+```{r ridge1}
+set.seed(42)
+mod_Ridge <- train(brozek_C ~.-abdomen_wrist,
+                   data = trainingTrans,
+                   method = "glmnet",
+                   trControl = myControl,
+                   tuneGrid = expand.grid(alpha = 0,
+                                          lambda = seq(0.01, 100, length = 100)))
+```
+
+```{r ridge2}
+plot(mod_Ridge$results$lambda, mod_Ridge$results$RMSE)
+```
+
+```{r ridge3}
+bestLambda <- mod_Ridge$bestTune[,2]
+```
+
+
+### Lasso Model
+
+```{r lasso1}
+set.seed(42)
+mod_lasso <- train(brozek_C ~.-abdomen_wrist,
+                   data = trainingTrans,
+                   method = "glmnet",
+                   trControl = myControl,
+                   tuneGrid = expand.grid(alpha = 1,
+                                          lambda = seq(0.01, 100, length = 100)))
+
+mod_lasso$results
+
+```
+
+```{r lasso2}
+plot(mod_lasso$results$lambda, mod_lasso$results$RMSE)
+```
+
+```{r lasso3}
+bestLambda2 <- mod_lasso$bestTune[,2]
+```
+
+### Elastic Net
+
+```{r enet1}
+set.seed(42)
+mod_EN <- train(brozek_C ~.-abdomen_wrist,
+                   data = trainingTrans,
+                   method = "glmnet",
+                   trControl = myControl,
+                   tuneGrid = expand.grid(alpha = seq(0.1, 0.5, length = 11),
+                                          lambda = seq(0.01, 100, length = 20)))
+```
+
+```{r enet2}
+plot(mod_EN$results$lambda, mod_EN$results$RMSE)
+```
+
+```{r enet3}
+mod_EN$bestTune
+
+bestLambda3 <- mod_EN$bestTune[2]
+bestAlpha <- mod_EN$bestTune[1]
+```
+
+## Example with Classification
+
+### Lasso
+
+```{r model3, echo = TRUE}
+lassoGrid = expand.grid(alpha = 1,
+                        lambda = seq(0.001, 0.1, length.out = 10))
+
+set.seed(4)
+
+model3 <- train(
+  is_4cyl~.,
+  data = train,
+  method = "glmnet",
+  family = "binomial",
+  trControl = CVcontrol,
+  tuneGrid = lassoGrid)
+```
+

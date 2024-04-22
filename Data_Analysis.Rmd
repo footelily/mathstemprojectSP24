@@ -1,0 +1,265 @@
+---
+title: "Data_Analysis"
+author: "Breanna Jones, Alex Johnson, Lily Foote"
+date: "2024-04-08"
+output: html_document
+---
+
+## Libraries Used
+
+```{r libraries, message = FALSE}
+library(tidyverse)
+library(caret) 
+library(randomForest)
+library(gbm)
+library(ipred)
+library(xgboost)
+library(Metrics)
+```
+
+## Cleaned Data
+
+### Reading in Data
+
+```{r reading}
+olym <- read.csv(file = "dataset_olympics.csv")
+region <- read.csv(file = "noc_region.csv")
+```
+
+### Cleaning the Data
+
+Below we create our final dataset for use in analysis, `olym_clean`.
+
+```{r cleaning}
+# Region codes
+olym$NOC <- gsub("SGP", "SIN", olym$NOC)
+
+# Disciplines
+olym_sport <- olym %>% 
+  rename(Discipline = Sport) %>% 
+  mutate(Sport = case_when(
+    Discipline == "Swimming" | 
+      Discipline == "Diving" |
+      Discipline == "Water Polo" |
+      Discipline == "Synchronized Swimming" ~ "Aquatics",
+    Discipline == "Volleyball" |
+      Discipline == "Beach Volleyball" ~ "Volleyball",
+    Discipline == "Gymnastics" |
+      Discipline == "Rhythmic Gymnastics" ~ "Gymnastics",
+    Discipline == "Bobsleigh" |
+      Discipline == "Skeleton" ~ "Bobsleigh",
+    Discipline == "Speed Skating" |
+      Discipline == "Short Track Speed Skating" |
+      Discipline == "Figure Skating" ~ "Skating",
+    Discipline == "Alpine Skiing" |
+      Discipline == "Cross Country Skiing" |
+      Discipline == "Ski Jumping" |
+      Discipline == "Nordic Combined" |
+      Discipline == "Freestyle Skiing" |
+      Discipline == "Snowboarding" ~ "Skiing")) %>% 
+  filter(Sport == "Skiing" | Sport == "Skating" | Sport == "Bobsleigh" | Sport == "Gymnastics" | Sport == "Volleyball" | Sport == "Aquatics") %>%
+  filter(Year >= 1980) %>% 
+  na.omit() %>% 
+  mutate(is_medalist = ifelse((Medal == "Bronze" | Medal == "Silver" | Medal == "Gold"), "medalist", "nonmedalist"))
+
+# Joining by Region
+olym_reg <- left_join(olym_sport, region, by = join_by(NOC == noc_region))
+
+# Omitting NA values
+olym_reg <- na.omit(olym_reg)
+
+# Replacing blank values for `Medal` with "none"
+olym_reg[olym_reg == ""] <- "none" 
+
+# Reordering columns, making variable names uniform, changing variable types
+olym_clean <- olym_reg %>%
+  rename(Region = reg) %>%
+  mutate(Sex = as.factor(Sex)) %>% 
+  mutate(is_medalist = as.factor(is_medalist)) %>% 
+  mutate(Medal = factor(Medal, levels = c("none", "Bronze", "Silver", "Gold"))) %>% 
+  mutate(Season = as.factor(Season)) %>% 
+  select(ID, Name, Sex, Age, Height, Weight, Region, NOC, Year, Season, City, Sport, Discipline, Event, is_medalist, Medal) 
+
+```
+
+## Partitioning the Data
+
+```{r partition}
+set.seed(4)
+
+trainIndex <- createDataPartition(y = olym_clean$is_medalist,
+                                  p = 0.8,
+                                  list = FALSE,
+                                  times = 1)
+
+train <- olym_clean[trainIndex, ]
+test <- olym_clean[-trainIndex, ]
+
+nrow(train) / nrow(olym_clean)
+
+```
+
+## Cross-Validation
+
+```{r CV}
+set.seed(4)
+
+CVcontrol <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 5,
+  savePredictions ="final",
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE)
+```
+
+
+## Models
+
+### Basic Generalized Linear Model (`glm`)
+
+```{r lm, warning = FALSE}
+model1 <- train(
+  is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal, #take out Season?
+  train,
+  method = "glm",
+  trControl = CVcontrol)
+```
+
+### Lasso Model
+
+```{r lasso}
+lassoGrid = expand.grid(alpha = 1,
+                        lambda = seq(0.001, 0.1, length.out = 10))
+
+set.seed(4)
+
+Lasso_mod <- train(
+  is_medalist~.-Name -Region -NOC -City -Event -ID -Medal,
+  data = train,
+  method = "glmnet",
+  family = "binomial",
+  trControl = CVcontrol,
+  tuneGrid = lassoGrid)
+
+```
+
+### Ridge Regression Model
+
+```{r ridge}
+set.seed(4)
+Ridge_mod <- train(is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal,
+                   data = train,
+                   method = "glmnet",
+                   trControl = CVcontrol,
+                   tuneGrid = expand.grid(alpha = 0,
+                                          lambda = seq(0.01, 100, length = 100)))
+```
+
+```{r}
+#cy1)
+```
+
+### Random Forest
+
+```{r, random forest}
+set.seed(4)
+train_rf <- train
+test_rf <- test
+
+train_rf$is_medalist <- ifelse(train_rf$is_medalist == "medalist", 1, 0)
+test_rf$is_medalist <- ifelse(test_rf$is_medalist == "medalist", 1, 0)
+
+rf_model <- randomForest(as.factor(is_medalist) ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline, data = train_rf, importance = TRUE)
+rf_model
+varImpPlot(rf_model,main = NULL)
+
+class_prediction <- predict(object = rf_model,
+                             newdata = test_rf,
+                             type = "class")
+rf_preds <- predict(object = rf_model,
+                             newdata = test_rf,
+                             type = "prob")
+
+cm <- confusionMatrix(data = class_prediction,
+                reference = as.factor(test_rf$is_medalist))
+
+#Test set accuracy
+cm$overall[1]
+
+#OOB accuracy
+error <- rf_model$err.rate
+oob_error <- error[nrow(error), "OOB"]
+oob_error
+1 - oob_error
+
+#AUC
+auc(actual = test_rf$is_medalist, predicted = class_prediction)
+```
+
+### Boosted Tree Model (GBM)
+
+- Gradient-boosted model
+
+```{r gbm}
+set.seed(4)
+
+#creating copies of train and test for gbm
+train_gbm <- train
+test_gbm <- test
+
+#changing train set for gbm with response converted to 0 and 1 values
+train_gbm$is_medalist <- ifelse(train_gbm$is_medalist == "medalist", 1, 0)
+
+#making sure all string values in new train and test are factors
+train_gbm <- as.data.frame(unclass(train_gbm),                
+                       stringsAsFactors = TRUE)
+test_gbm <- as.data.frame(unclass(test_gbm),                  
+                       stringsAsFactors = TRUE)
+
+#training gbm model on train_gbm
+gbm_model <- gbm(formula = is_medalist ~ .-Name -Region -NOC -City -Event -ID -Medal, 
+                    distribution = "bernoulli", 
+                    data = train_gbm,
+                    n.trees = 5000,
+                    cv.folds = 10)
+
+#finding optimal n.trees value
+gbm_optimal_trees <- gbm.perf(object = gbm_model,
+                          method = "OOB",
+                          oobag.curve = TRUE)
+gbm_optimal_trees2 <- gbm.perf(object = gbm_model, 
+                         method = "cv")
+
+gbm_optimal_trees[1]
+gbm_optimal_trees2[1]
+
+#viewing model
+gbm_model
+summary(gbm_model)
+```
+
+#### Testing Predictions
+
+```{r gbm-2}
+test_gbm$is_medalist <- ifelse(test$is_medalist == "medalist", 1, 0)
+
+gbm_preds <- predict(object = gbm_model, 
+                  newdata = test_gbm,
+                  n.trees = 10000)
+#returns log-scaled values
+
+gbm_preds2 <- predict(object = gbm_model, 
+                  newdata = test_gbm,
+                  n.trees = 10000,
+                  type = "response") #returns original-scaled values
+```
+
+##### Calculating Test AUC
+
+```{r gbm-3}
+auc(actual = test_gbm$is_medalist, predicted = gbm_preds)
+auc(actual = test_gbm$is_medalist, predicted = gbm_preds2)
+```
+
+

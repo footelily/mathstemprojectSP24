@@ -1,0 +1,181 @@
+---
+title: "Random Forest Notes"
+author: "Lily Foote"
+date: "2024-04-17"
+output: html_document
+---
+
+```{r libraries}
+library(tidyverse)
+library(caret)
+library(rpart) #"recursive partitioning"
+library(rpart.plot)
+library(readr)
+library(Metrics) #ML performance metrics
+library(ipred)
+library(randomForest)
+library(gbm)
+library(ROCR) #plot multiple ROC curves
+```
+
+
+## Random Forests
+
+### Intro to Random Forests
+
+Random Forests are a randomized ensemble of bagged tree models, where a subset of features is sampled at each split of the tree (feature bagging)
+
+Pros:
+
+- Better performance
+
+- Reduced correlation between sampled trees
+
+Parameters:
+
+- `ntrees`: number of trees in the model; usually more = better (default = 500)
+
+- `mtry`: number of variables randomly sampled at each split (default = sqrt(nfeatures), for classification)
+
+- `sampsize`: number of samples to train on (default = 63.2% of training sample)
+
+- `nodesize`: minimum size (number of samples) of the terminal nodes (smaller values allows for more complex trees)
+
+- `maxnodes`: maximum number of terminal nodes (smaller values limit overfitting)
+
+
+### Example: *German Credit* Dataset
+
+#### Modeling with Random Forests
+
+We can use the `randomForest()` function from the `randomForest` package. (Another option the  `train()` function from the `caret` package, with the `method = "ranger"` or `"rf"` argument)
+
+##### Training a Random Forest Model
+
+```{r training-model4}
+set.seed(1)
+
+credit_model4 <- randomForest(formula = as.factor(default)~., data = credit_train)
+
+credit_model4
+```
+
+##### Evaluating Model Performance
+
+The **out-of-bag error** is the classification error across all out-of-bag samples of a random forest model.
+
+We can view the OOB error matrix:
+
+```{r OOB-error1}
+error <- credit_model4$err.rate
+head(error)
+```
+
+and the last row of the matrix, which gives us the final OOB error:
+
+```{r OOB-error2}
+oob_error <- error[nrow(error), "OOB"]
+oob_error
+```
+
+We can also plot the OOB error over the model:
+
+```{r OOB-error-plot}
+plot(credit_model4, main = "OOB error rate versus number of trees")
+
+legend(x = "right",
+       legend = colnames(error),
+       fill = 1:ncol(error))
+```
+
+And with predictions, we can also find the confusion matrix and the **test error**:
+
+```{r predictions4}
+class_prediction3 <- predict(object = credit_model4,
+                             newdata = credit_test,
+                             type = "class")
+head(class_prediction3)
+
+rf_preds <- predict(object = credit_model4,
+                             newdata = credit_test,
+                             type = "prob")
+class(rf_preds)
+head(rf_preds)
+mean(rf_preds)
+```
+
+```{r confusion-matrix3}
+cm <- confusionMatrix(data = class_prediction3,
+                reference = as.factor(credit_test$default))
+
+#Test set accuracy
+cm$overall[1]
+
+#OOB accuracy
+1 - oob_error
+```
+
+- We can see that the test accuracy is 0.74 while the OOB accuracy (1 - OOB error) is 0.77.
+
+We can also compute test AUC for random forest models using our predicted probabilities:
+
+```{r AUC2}
+auc(actual = ifelse(credit_test$default == "yes", 1, 0),
+    predicted = rf_preds[, "yes"])
+```
+
+##### Tuning the Model
+
+We can tune `mtry` with `tuneRF()` from the `randomForest` package, which tunes the model based on OOB error:
+
+```{r tuneRF}
+set.seed(1)
+res <- tuneRF(x = subset(credit_train, select = -default),
+              y = as.factor(credit_train$default),
+              ntreeTry = 500) #doBest = TRUE gives best mtry
+res
+```
+
+- `ntreeTry` defaults to 50 trees
+
+- also plots model performance via OOB error as a function of `mtry`
+
+We can find the value of `mtry` that minimizes OOB error:
+
+```{r tuneRF2}
+mtry_optimal <- res[, "mtry"][which.min(res[, "OOBError"])]
+mtry_optimal
+```
+
+Lastly, as another way to tune the model, we can create a manual grid of `mtry`, `nodesize`, and `sampsize` values to identify the best model based on OOB error:
+
+```{r gridsearch4}
+# Establish a list of possible values for mtry, nodesize and sampsize
+mtry <- seq(4, ncol(credit_train) * 0.8, 2)
+nodesize <- seq(3, 8, 2)
+sampsize <- nrow(credit_train) * c(0.7, 0.8)
+
+# Create a data frame containing all combinations 
+hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
+
+# Create an empty vector to store OOB error values
+oob_err <- c()
+
+# Write a loop over the rows of hyper_grid to train the grid of models
+for (i in 1:nrow(hyper_grid)) {
+
+    # Train a Random Forest model
+    model <- randomForest(formula = as.factor(default) ~ ., 
+                          data = credit_train,
+                          mtry = hyper_grid$mtry[i],
+                          nodesize = hyper_grid$nodesize[i],
+                          sampsize = hyper_grid$sampsize[i])
+                          
+    # Store OOB error for the model                      
+    oob_err[i] <- model$err.rate[nrow(model$err.rate), "OOB"]
+}
+
+# Identify optimal set of hyperparmeters based on OOB error
+opt_i <- which.min(oob_err)
+hyper_grid[opt_i,]
+```
