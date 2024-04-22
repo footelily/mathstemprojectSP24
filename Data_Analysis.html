@@ -459,16 +459,16 @@ CVcontrol &lt;- trainControl(
 <h2>Models</h2>
 <div id="basic-generalized-linear-model-glm" class="section level3">
 <h3>Basic Generalized Linear Model (<code>glm</code>)</h3>
-<pre class="r"><code>model1 &lt;- train(
-  is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal, #take out Season?
+<pre class="r"><code>lm_mod &lt;- train(
+  is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
   train,
   method = &quot;glm&quot;,
-  trControl = CVcontrol)</code></pre>
+  trControl = CVcontrol)
+
+lm_preds &lt;- predict(object = lm_mod, newdata = test, type = &quot;raw&quot;)</code></pre>
 </div>
 <div id="lasso-model" class="section level3">
 <h3>Lasso Model</h3>
-<p>Alex I added our lasso model from the stt 3860 group project to the
-notes doc, too (it uses classification)</p>
 <pre class="r"><code>lassoGrid = expand.grid(alpha = 1,
                         lambda = seq(0.001, 0.1, length.out = 10))
 
@@ -627,10 +627,6 @@ gbm_preds2 &lt;- predict(object = gbm_model,
                   type = &quot;response&quot;) #returns original-scaled values</code></pre>
 <pre><code>## Warning in predict.gbm(object = gbm_model, newdata = test_gbm, n.trees = 10000,
 ## : Number of trees not specified or exceeded number fit so far. Using 5000.</code></pre>
-<pre class="r"><code>range(gbm_preds)</code></pre>
-<pre><code>## [1] -4.4553410  0.9371155</code></pre>
-<pre class="r"><code>range(gbm_preds2)</code></pre>
-<pre><code>## [1] 0.01148297 0.71851662</code></pre>
 <div id="calculating-test-auc" class="section level5">
 <h5>Calculating Test AUC</h5>
 <pre class="r"><code>auc(actual = test_gbm$is_medalist, predicted = gbm_preds)</code></pre>
