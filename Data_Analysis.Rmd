@@ -119,11 +119,14 @@ CVcontrol <- trainControl(
 ### Basic Generalized Linear Model (`glm`)
 
 ```{r lm, warning = FALSE}
-model1 <- train(
-  is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal, #take out Season?
+lm_mod <- train(
+  is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
   train,
   method = "glm",
   trControl = CVcontrol)
+
+lm_preds <- predict(object = lm_mod, newdata = test, type = "raw")
+
 ```
 
 ### Lasso Model
