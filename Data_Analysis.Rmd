@@ -83,6 +83,23 @@ olym_clean <- olym_reg %>%
 # Percent of athletes that are medalists
 sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
 
+#This is no good! We need a more equal proportion of medalists to nonmedalists.
+
+# Separating medalists and nonmedalists:
+medalists <- olym_clean %>% 
+  filter(is_medalist == "medalist")
+
+nonmedalists <- olym_clean %>% 
+  filter(is_medalist == "nonmedalist")
+
+# Creating an index of nonmedalists: random sample of half the observations
+nonmedalist_index <- sample(nrow(nonmedalists), size = 0.5*(nrow(nonmedalists)))
+
+# Joining the randomly sampled half of the nonmedalists with the medalists to create a new, balanced data set
+olym_new <- full_join(nonmedalists[nonmedalist_index, ], medalists)
+
+# Proportion is better!
+sum(olym_new$is_medalist == "medalist") / sum(olym_new$is_medalist == "nonmedalist")
 ```
 
 ## Partitioning the Data
@@ -167,6 +184,23 @@ test[which(lm_preds == "medalist"),]
 
 ```
 
+### Logistic Model
+
+```{r logistic}
+library(stats)
+logit_model <- glm(
+  is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
+  train2,
+  family = binomial
+)
+
+summary(logit_model)
+
+
+
+```
+
+
 ### Lasso Model
 
 ```{r lasso}
@@ -185,11 +219,13 @@ Lasso_mod <- train(
 
 lasso_preds <- predict(object = Lasso_mod, newdata = test, type = "raw")
 
-accuracy(test$is_medalist, lasso_preds)
+auc(test$is_medalist, lasso_preds)
 
-sum(lasso_preds == "medalist")
+#accuracy(test$is_medalist, lasso_preds)
 
-sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
+#sum(lasso_preds == "medalist")
+
+#sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
 
 ```
 
