@@ -28,7 +28,7 @@ region <- read.csv(file = "noc_region.csv")
 
 ### Cleaning the Data
 
-Below we create our final dataset for use in analysis, `olym_clean`.
+Below we create our final dataset for use in analysis, `olym_new`.
 
 ```{r cleaning}
 # Region codes
@@ -80,7 +80,7 @@ olym_clean <- olym_reg %>%
   mutate(Season = as.factor(Season)) %>% 
   select(ID, Name, Sex, Age, Height, Weight, Region, NOC, Year, Season, City, Sport, Discipline, Event, is_medalist, Medal) 
 
-# Percent of athletes that are medalists
+# Percent of athletes that are medalists...
 sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
 
 #This is no good! We need a more equal proportion of medalists to nonmedalists.
@@ -107,29 +107,27 @@ sum(olym_new$is_medalist == "medalist") / sum(olym_new$is_medalist == "nonmedali
 ```{r partition}
 set.seed(5)
 
-trainIndex <- createDataPartition(y = olym_clean$is_medalist,
+trainIndex <- createDataPartition(y = olym_new$is_medalist,
                                   p = 0.8,
                                   list = FALSE,
                                   times = 1)
 
-train <- olym_clean[trainIndex, ]
-test <- olym_clean[-trainIndex, ]
+train <- olym_new[trainIndex, ]
+test <- olym_new[-trainIndex, ]
 
 nrow(train) / nrow(olym_clean)
 
-#Changes made 4-26-24 to fix AUC issues:
-
-  # transforming all strings to factors in train and test
+# Transforming all strings to factors in train and test
 train <- as.data.frame(unclass(train),                
                        stringsAsFactors = TRUE)
 test <- as.data.frame(unclass(test),                  
                        stringsAsFactors = TRUE)
 
-#Creating train2 and test2
+#Creating copies: train2 and test2
 train2 <- train
 test2 <- test
 
-  # transforming predictor to binary in train2 and test2
+# Transforming predictor to binary values in train2 and test2
 train2$is_medalist <- as.factor(
   ifelse(train2$is_medalist == "medalist", 1, 0))
 test2$is_medalist <- as.factor(
@@ -195,8 +193,6 @@ logit_model <- glm(
 )
 
 summary(logit_model)
-
-
 
 ```
 
