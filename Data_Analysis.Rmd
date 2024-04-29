@@ -7,7 +7,10 @@ output: html_document
 
 ## Libraries Used
 
-```{r libraries, message = FALSE}
+```{r libraries, message = FALSE, warning = FALSE}
+#install.packages("NHANES")
+#install.packages("RANN")
+
 library(tidyverse)
 library(caret) 
 library(randomForest)
@@ -15,6 +18,8 @@ library(gbm)
 library(ipred)
 library(xgboost)
 library(Metrics)
+library(NHANES)
+library(RANN)
 ```
 
 ## Cleaned Data
@@ -30,7 +35,7 @@ region <- read.csv(file = "noc_region.csv")
 
 Below we create our final dataset for use in analysis, `olym_new`.
 
-```{r cleaning}
+```{r cleaning, message = FALSE}
 # Region codes
 olym$NOC <- gsub("SGP", "SIN", olym$NOC)
 
@@ -105,7 +110,7 @@ sum(olym_new$is_medalist == "medalist") / sum(olym_new$is_medalist == "nonmedali
 ## Partitioning the Data
 
 ```{r partition}
-set.seed(5)
+set.seed(4)
 
 trainIndex <- createDataPartition(y = olym_new$is_medalist,
                                   p = 0.8,
@@ -115,7 +120,7 @@ trainIndex <- createDataPartition(y = olym_new$is_medalist,
 train <- olym_new[trainIndex, ]
 test <- olym_new[-trainIndex, ]
 
-nrow(train) / nrow(olym_clean)
+nrow(train) / nrow(olym_new)
 
 # Transforming all strings to factors in train and test
 train <- as.data.frame(unclass(train),                
@@ -137,7 +142,7 @@ test2$is_medalist <- as.factor(
 ## Cross-Validation
 
 ```{r CV}
-set.seed(5)
+set.seed(4)
 
 CVcontrol <- trainControl(
   method = "repeatedcv",
@@ -154,57 +159,75 @@ CVcontrol <- trainControl(
 ### Basic Generalized Linear Model (`glm`)
 
 ```{r lm, warning = FALSE}
+set.seed(4)
+
+#training model
 lm_mod <- train(
   is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
   train,
   method = "glm",
   trControl = CVcontrol)
 
+#running predictions
 lm_preds <- predict(object = lm_mod, newdata = test, type = "raw")
 
+#number of predicted medalists:
 sum(lm_preds == "medalist")
-#glm predicted ALL non-medalists??
 
-#creating a binary version of lm_preds
+#creating a binary version of lm_preds: lm_preds2
 lm_preds2 <- lm_preds
 lm_preds2 <- as.factor(
   ifelse(lm_preds2 == "medalist", 1, 0))
 
-glimpse(lm_preds)
-glimpse(lm_preds2)
-
-summary(lm_mod)
-
-accuracy(test$is_medalist, lm_preds)
+#finding AUC using lm_preds2 and test2
 auc(test2$is_medalist, lm_preds2)
 
-test[which(lm_preds == "medalist"),]
-
+#accuracy(test$is_medalist, lm_preds)
 ```
 
 ### Logistic Model
 
-```{r logistic}
-library(stats)
-logit_model <- glm(
+```{r logit, warning = FALSE}
+set.seed(4)
+
+#training model (binary)
+logit_mod <- glm(
   is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
   train2,
-  family = binomial
-)
+  family = "binomial")
 
-summary(logit_model)
+# questionable logit code:
+#logit_mod <- train(
+#  is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
+#  train,
+#  method = "glm",
+#  family = binomial(),
+#  trControl = CVcontrol)
 
+#running probabilities (binary)
+logit_probs <- predict(object = logit_mod, newdata = test2, type = "response")
+
+#finding predictions from probabilities (binary)
+logit_preds <- as.factor(
+  ifelse(logit_probs >= 0.5, 1, 0))
+
+#number of predicted medalists (binary)
+sum(logit_preds == 1)
+
+#finding AUC using logit_preds and test2
+auc(test2$is_medalist, logit_preds)
 ```
-
 
 ### Lasso Model
 
 ```{r lasso}
+set.seed(4)
+
+#creating lasso grid with alpha = 1 to find best lambda value
 lassoGrid = expand.grid(alpha = 1,
                         lambda = seq(0.001, 0.1, length.out = 10))
 
-set.seed(5)
-
+#training model
 Lasso_mod <- train(
   is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
   data = train,
@@ -213,38 +236,69 @@ Lasso_mod <- train(
   trControl = CVcontrol,
   tuneGrid = lassoGrid)
 
+#viewing model output
+Lasso_mod
+
+#running predictions
 lasso_preds <- predict(object = Lasso_mod, newdata = test, type = "raw")
 
-auc(test$is_medalist, lasso_preds)
+#number of predicted medalists:
+sum(lasso_preds == "medalist")
+
+#creating a binary version of lasso_preds: lasso_preds2
+lasso_preds2 <- lasso_preds
+lasso_preds2 <- as.factor(
+  ifelse(lasso_preds2 == "medalist", 1, 0))
+
+#finding AUC using lasso_preds2 and test2
+auc(test2$is_medalist, lasso_preds2)
 
 #accuracy(test$is_medalist, lasso_preds)
-
-#sum(lasso_preds == "medalist")
-
-#sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
-
 ```
 
 ### Ridge Regression Model
 
-```{r ridge}
-set.seed(5)
-Ridge_mod <- train(is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal,
-                   data = train,
-                   method = "glmnet",
-                   trControl = CVcontrol,
-                   tuneGrid = expand.grid(alpha = 0,
-                                          lambda = seq(0.01, 100, length = 100)))
-```
+```{r ridge, warning = FALSE}
+set.seed(4)
 
-```{r}
-#cy1)
+#creating ridge grid with alpha = 0 to find best lambda value
+ridgeGrid = expand.grid(alpha = 0,
+                        lambda = seq(0.001, 0.1, length.out = 10))
+
+#training model
+Ridge_mod <- train(
+  is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
+  data = train,
+  method = "glmnet",
+  family = "binomial",
+  trControl = CVcontrol,
+  tuneGrid = ridgeGrid)
+
+#viewing model output
+Ridge_mod
+
+#running predictions
+ridge_preds <- predict(object = Ridge_mod, newdata = test, type = "raw")
+
+#number of predicted medalists:
+sum(ridge_preds == "medalist")
+
+#creating a binary version of ridge_preds: ridge_preds2
+ridge_preds2 <- ridge_preds
+ridge_preds2 <- as.factor(
+  ifelse(ridge_preds2 == "medalist", 1, 0))
+
+#finding AUC using ridge_preds2 and test2
+auc(test2$is_medalist, ridge_preds2)
+
+#accuracy(test$is_medalist, ridge_preds)
 ```
 
 ### Random Forest
 
 ```{r, random forest}
-set.seed(5)
+set.seed(4)
+
 train_rf <- train
 test_rf <- test
 
