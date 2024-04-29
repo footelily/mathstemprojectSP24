@@ -80,12 +80,15 @@ olym_clean <- olym_reg %>%
   mutate(Season = as.factor(Season)) %>% 
   select(ID, Name, Sex, Age, Height, Weight, Region, NOC, Year, Season, City, Sport, Discipline, Event, is_medalist, Medal) 
 
+# Percent of athletes that are medalists
+sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
+
 ```
 
 ## Partitioning the Data
 
 ```{r partition}
-set.seed(4)
+set.seed(5)
 
 trainIndex <- createDataPartition(y = olym_clean$is_medalist,
                                   p = 0.8,
@@ -97,12 +100,29 @@ test <- olym_clean[-trainIndex, ]
 
 nrow(train) / nrow(olym_clean)
 
+#Changes made 4-26-24 to fix AUC issues:
+
+  # transforming all strings to factors in train and test
+train <- as.data.frame(unclass(train),                
+                       stringsAsFactors = TRUE)
+test <- as.data.frame(unclass(test),                  
+                       stringsAsFactors = TRUE)
+
+#Creating train2 and test2
+train2 <- train
+test2 <- test
+
+  # transforming predictor to binary in train2 and test2
+train2$is_medalist <- as.factor(
+  ifelse(train2$is_medalist == "medalist", 1, 0))
+test2$is_medalist <- as.factor(
+  ifelse(test2$is_medalist == "medalist", 1, 0))
 ```
 
 ## Cross-Validation
 
 ```{r CV}
-set.seed(4)
+set.seed(5)
 
 CVcontrol <- trainControl(
   method = "repeatedcv",
@@ -127,6 +147,24 @@ lm_mod <- train(
 
 lm_preds <- predict(object = lm_mod, newdata = test, type = "raw")
 
+sum(lm_preds == "medalist")
+#glm predicted ALL non-medalists??
+
+#creating a binary version of lm_preds
+lm_preds2 <- lm_preds
+lm_preds2 <- as.factor(
+  ifelse(lm_preds2 == "medalist", 1, 0))
+
+glimpse(lm_preds)
+glimpse(lm_preds2)
+
+summary(lm_mod)
+
+accuracy(test$is_medalist, lm_preds)
+auc(test2$is_medalist, lm_preds2)
+
+test[which(lm_preds == "medalist"),]
+
 ```
 
 ### Lasso Model
@@ -135,22 +173,30 @@ lm_preds <- predict(object = lm_mod, newdata = test, type = "raw")
 lassoGrid = expand.grid(alpha = 1,
                         lambda = seq(0.001, 0.1, length.out = 10))
 
-set.seed(4)
+set.seed(5)
 
 Lasso_mod <- train(
-  is_medalist~.-Name -Region -NOC -City -Event -ID -Medal,
+  is_medalist ~ Sex + Age + Height + Weight + Year + Season + Sport + Discipline,
   data = train,
   method = "glmnet",
   family = "binomial",
   trControl = CVcontrol,
   tuneGrid = lassoGrid)
 
+lasso_preds <- predict(object = Lasso_mod, newdata = test, type = "raw")
+
+accuracy(test$is_medalist, lasso_preds)
+
+sum(lasso_preds == "medalist")
+
+sum(olym_clean$is_medalist == "medalist") / sum(olym_clean$is_medalist == "nonmedalist")
+
 ```
 
 ### Ridge Regression Model
 
 ```{r ridge}
-set.seed(4)
+set.seed(5)
 Ridge_mod <- train(is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal,
                    data = train,
                    method = "glmnet",
@@ -166,7 +212,7 @@ Ridge_mod <- train(is_medalist ~.-Name -Region -NOC -City -Event -ID -Medal,
 ### Random Forest
 
 ```{r, random forest}
-set.seed(4)
+set.seed(5)
 train_rf <- train
 test_rf <- test
 
@@ -205,7 +251,7 @@ auc(actual = test_rf$is_medalist, predicted = class_prediction)
 - Gradient-boosted model
 
 ```{r gbm}
-set.seed(4)
+set.seed(5)
 
 #creating copies of train and test for gbm
 train_gbm <- train
@@ -213,6 +259,8 @@ test_gbm <- test
 
 #changing train set for gbm with response converted to 0 and 1 values
 train_gbm$is_medalist <- ifelse(train_gbm$is_medalist == "medalist", 1, 0)
+
+test_gbm$is_medalist <- ifelse(test$is_medalist == "medalist", 1, 0)
 
 #making sure all string values in new train and test are factors
 train_gbm <- as.data.frame(unclass(train_gbm),                
