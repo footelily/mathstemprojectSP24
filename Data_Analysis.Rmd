@@ -10,6 +10,7 @@ output: html_document
 ```{r libraries, message = FALSE, warning = FALSE}
 #install.packages("NHANES")
 #install.packages("RANN")
+#install.packages("reshape2")
 
 library(tidyverse)
 library(caret) 
@@ -20,6 +21,7 @@ library(xgboost)
 library(Metrics)
 library(NHANES)
 library(RANN)
+library(reshape2)
 ```
 
 ## Cleaned Data
@@ -296,7 +298,7 @@ auc(test2$is_medalist, ridge_preds2)
 
 ### Random Forest
 
-```{r, random forest}
+```{r, rf}
 set.seed(4)
 
 train_rf <- train
@@ -331,6 +333,18 @@ oob_error
 #AUC
 auc(actual = test_rf$is_medalist, predicted = class_prediction)
 ```
+
+```{r confusion-matrix}
+cm_melt = melt(cm$table, id.vars = "rf_preds")
+
+ggplot(cm_melt, aes(x = Prediction, y = Reference, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = value), vjust = 1) +
+  scale_fill_gradient(low = "white", high = "cornflowerblue") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix for Random Forest Model") +
+  theme_minimal()
+```
+
 
 ### Boosted Tree Model (GBM)
 
